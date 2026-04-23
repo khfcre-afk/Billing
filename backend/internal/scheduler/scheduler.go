@@ -27,9 +27,15 @@ func New(db *pgxpool.Pool, ptero *pterodactyl.Client) *Scheduler {
 	return &Scheduler{db: db, ptero: ptero, cron: cron.New()}
 }
 
-func (s *Scheduler) Start(ctx context.Context, spec string) error {
+// Start schedules the daily charge job. The job itself derives a fresh
+// context.Background() per tick so that graceful shutdown (which cancels the
+// startup context) does not abort an in-flight charge; Stop() blocks on the
+// cron scheduler's own drain to prevent new ticks after shutdown.
+func (s *Scheduler) Start(_ context.Context, spec string) error {
 	_, err := s.cron.AddFunc(spec, func() {
-		if err := s.DailyCharge(ctx); err != nil {
+		tickCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		if err := s.DailyCharge(tickCtx); err != nil {
 			log.Error().Err(err).Msg("daily charge failed")
 		}
 	})

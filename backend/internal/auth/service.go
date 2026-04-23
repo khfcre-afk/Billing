@@ -48,68 +48,105 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*TokenPair, e
 	if err != nil {
 		return nil, err
 	}
-	var id uuid.UUID
-	err = s.db.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`,
-		in.Email, string(hash),
-	).Scan(&id)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return nil, httpx.WithDetail(httpx.ErrConflict, "email already registered")
+	var pair *TokenPair
+	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var id uuid.UUID
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`,
+			in.Email, string(hash),
+		).Scan(&id); err != nil {
+			if isUniqueViolation(err) {
+				return httpx.WithDetail(httpx.ErrConflict, "email already registered")
+			}
+			return err
 		}
+		p, err := s.issueTx(ctx, tx, id.String(), "user")
+		if err != nil {
+			return err
+		}
+		pair = p
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	return s.issue(ctx, id.String(), "user")
+	return pair, nil
 }
 
 func (s *Service) Login(ctx context.Context, in LoginInput) (*TokenPair, error) {
-	var (
-		id   uuid.UUID
-		hash string
-		role string
-	)
-	err := s.db.QueryRow(ctx,
-		`SELECT id, password_hash, role FROM users WHERE email = $1`, in.Email,
-	).Scan(&id, &hash, &role)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, httpx.WithDetail(httpx.ErrUnauthorized, "invalid credentials")
-	}
+	var pair *TokenPair
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var (
+			id   uuid.UUID
+			hash string
+			role string
+		)
+		if err := tx.QueryRow(ctx,
+			`SELECT id, password_hash, role FROM users WHERE email = $1`, in.Email,
+		).Scan(&id, &hash, &role); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return httpx.WithDetail(httpx.ErrUnauthorized, "invalid credentials")
+			}
+			return err
+		}
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
+			return httpx.WithDetail(httpx.ErrUnauthorized, "invalid credentials")
+		}
+		p, err := s.issueTx(ctx, tx, id.String(), role)
+		if err != nil {
+			return err
+		}
+		pair = p
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
-		return nil, httpx.WithDetail(httpx.ErrUnauthorized, "invalid credentials")
-	}
-	return s.issue(ctx, id.String(), role)
+	return pair, nil
 }
 
+// Refresh rotates a refresh token atomically: it locks the existing token row,
+// verifies it is still valid, revokes it and issues a new pair inside one
+// transaction to prevent concurrent replay of the same refresh token.
 func (s *Service) Refresh(ctx context.Context, refresh string) (*TokenPair, error) {
 	hash := hashToken(refresh)
-	var (
-		id         uuid.UUID
-		userID     uuid.UUID
-		expiresAt  time.Time
-		revokedAt  *time.Time
-		role       string
-	)
-	err := s.db.QueryRow(ctx, `
-		SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked_at, u.role
-		FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id
-		WHERE rt.token_hash = $1`, hash,
-	).Scan(&id, &userID, &expiresAt, &revokedAt, &role)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, httpx.ErrUnauthorized
-	}
+	var pair *TokenPair
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var (
+			id        uuid.UUID
+			userID    uuid.UUID
+			expiresAt time.Time
+			revokedAt *time.Time
+			role      string
+		)
+		if err := tx.QueryRow(ctx, `
+			SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked_at, u.role
+			FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id
+			WHERE rt.token_hash = $1
+			FOR UPDATE OF rt`, hash,
+		).Scan(&id, &userID, &expiresAt, &revokedAt, &role); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return httpx.ErrUnauthorized
+			}
+			return err
+		}
+		if revokedAt != nil || time.Now().After(expiresAt) {
+			return httpx.ErrUnauthorized
+		}
+		if _, err := tx.Exec(ctx, `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`, id); err != nil {
+			return err
+		}
+		p, err := s.issueTx(ctx, tx, userID.String(), role)
+		if err != nil {
+			return err
+		}
+		pair = p
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if revokedAt != nil || time.Now().After(expiresAt) {
-		return nil, httpx.ErrUnauthorized
-	}
-	if _, err := s.db.Exec(ctx, `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`, id); err != nil {
-		return nil, err
-	}
-	return s.issue(ctx, userID.String(), role)
+	return pair, nil
 }
 
 func (s *Service) Logout(ctx context.Context, refresh string) error {
@@ -117,7 +154,7 @@ func (s *Service) Logout(ctx context.Context, refresh string) error {
 	return err
 }
 
-func (s *Service) issue(ctx context.Context, userID, role string) (*TokenPair, error) {
+func (s *Service) issueTx(ctx context.Context, tx pgx.Tx, userID, role string) (*TokenPair, error) {
 	access, exp, err := s.issuer.Access(userID, role)
 	if err != nil {
 		return nil, err
@@ -126,11 +163,10 @@ func (s *Service) issue(ctx context.Context, userID, role string) (*TokenPair, e
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.db.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
 		userID, hashToken(refresh), time.Now().Add(s.issuer.RefreshTTL()),
-	)
-	if err != nil {
+	); err != nil {
 		return nil, err
 	}
 	return &TokenPair{AccessToken: access, RefreshToken: refresh, ExpiresAt: exp, UserID: userID, Role: role}, nil

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Problem struct {
@@ -37,11 +39,15 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// WriteProblem responds with a structured JSON problem. Typed Problem errors
+// are forwarded as-is; any other error is logged server-side and surfaced to
+// the client as a generic 500 without leaking internal details.
 func WriteProblem(w http.ResponseWriter, err error) {
 	var p Problem
 	if errors.As(err, &p) {
 		WriteJSON(w, p.Status, p)
 		return
 	}
-	WriteJSON(w, http.StatusInternalServerError, WithDetail(ErrInternal, err.Error()))
+	log.Error().Err(err).Msg("unhandled error")
+	WriteJSON(w, http.StatusInternalServerError, ErrInternal)
 }

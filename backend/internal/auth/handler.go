@@ -97,9 +97,8 @@ func (h *Handler) setAuthCookies(w http.ResponseWriter, p *TokenPair) {
 }
 
 func (h *Handler) clearCookies(w http.ResponseWriter) {
-	for _, name := range []string{"access_token", "refresh_token"} {
-		http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
-	}
+	http.SetCookie(w, &http.Cookie{Name: "access_token", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "refresh_token", Value: "", Path: "/api/auth", HttpOnly: true, MaxAge: -1})
 }
 
 func refreshFrom(r *http.Request) string {
