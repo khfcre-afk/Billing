@@ -104,9 +104,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			r.Mount("/", authH.Routes())
 		})
 
-		r.Get("/tariffs", func(w http.ResponseWriter, req *http.Request) {
-			tariffH.PublicRoutes().ServeHTTP(w, req)
-		})
+		r.Get("/tariffs", tariffH.List)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(issuer))

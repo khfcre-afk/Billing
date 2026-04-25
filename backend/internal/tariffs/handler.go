@@ -18,11 +18,8 @@ func NewHandler(repo *Repo, p *PurchaseService) *Handler {
 	return &Handler{repo: repo, purchaser: p}
 }
 
-func (h *Handler) PublicRoutes() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", h.list)
-	return r
-}
+// List is the public list endpoint exposed at GET /api/tariffs.
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) { h.list(w, r) }
 
 func (h *Handler) AuthedRoutes() http.Handler {
 	r := chi.NewRouter()

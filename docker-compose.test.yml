@@ -1,0 +1,18 @@
+services:
+  ptero-mock:
+    build:
+      context: ./test-mock
+    ports:
+      - "18081:8081"
+
+  backend:
+    environment:
+      PTERO_BASE_URL: http://ptero-mock:8081
+      PTERO_APP_API_KEY: ptla_mock_key
+      PTERO_CLIENT_API_KEY: ptlc_mock_key
+      PTERO_DEFAULT_NODE_ID: "1"
+      PTERO_DEFAULT_NEST_ID: "1"
+      PTERO_DEFAULT_EGG_ID: "1"
+    depends_on:
+      ptero-mock:
+        condition: service_started
