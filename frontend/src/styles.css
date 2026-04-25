@@ -1,0 +1,67 @@
+@import "@fontsource/space-grotesk/400.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+  body {
+    background-color: #0a0a0f;
+    background-image:
+      radial-gradient(1200px 600px at 20% -10%, rgba(124, 92, 255, 0.35), transparent 60%),
+      radial-gradient(800px 400px at 90% 10%, rgba(34, 211, 238, 0.2), transparent 60%);
+    background-attachment: fixed;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+  h1 {
+    font-size: clamp(2.25rem, 2vw + 1.5rem, 4rem);
+    font-weight: 700;
+  }
+  h2 {
+    font-size: clamp(1.75rem, 1.2vw + 1.2rem, 2.5rem);
+    font-weight: 600;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-surface/60 border border-border/70 backdrop-blur-xl;
+  }
+  .card {
+    @apply glass rounded-2xl p-6 shadow-glow;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition active:scale-[0.98];
+  }
+  .btn-primary {
+    @apply btn bg-accent text-white hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-border/70 bg-surface/40 hover:bg-surface;
+  }
+  .input {
+    @apply w-full rounded-xl bg-surface-2 border border-border/70 px-3 py-2 text-sm placeholder:text-muted outline-none focus:border-accent;
+  }
+  .label {
+    @apply block text-xs uppercase tracking-wider text-muted mb-1;
+  }
+}

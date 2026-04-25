@@ -1,0 +1,32 @@
+# Env
+.env
+.env.local
+*.env.local
+
+# Go
+/backend/bin/
+/backend/tmp/
+*.test
+*.out
+/backend/coverage.*
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+*.log
+.npm/
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/*.tsbuildinfo
+frontend/tsconfig*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Docker
+docker/data/
