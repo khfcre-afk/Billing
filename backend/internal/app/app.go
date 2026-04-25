@@ -104,13 +104,15 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			r.Mount("/", authH.Routes())
 		})
 
-		r.Get("/tariffs", tariffH.List)
+		r.Group(func(r chi.Router) {
+			r.Get("/tariffs", tariffH.List)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(issuer))
 			r.Mount("/users", usersH.Routes())
 			r.Mount("/promo", promoH.Routes())
-			r.Mount("/tariffs", tariffH.AuthedRoutes())
+			r.Post("/tariffs/{id}/purchase", tariffH.Purchase)
 			r.Mount("/servers", serverH.Routes())
 			r.Mount("/transactions", txH.Routes())
 

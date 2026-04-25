@@ -21,11 +21,8 @@ func NewHandler(repo *Repo, p *PurchaseService) *Handler {
 // List is the public list endpoint exposed at GET /api/tariffs.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) { h.list(w, r) }
 
-func (h *Handler) AuthedRoutes() http.Handler {
-	r := chi.NewRouter()
-	r.Post("/{id}/purchase", h.purchase)
-	return r
-}
+// Purchase is the authed purchase endpoint exposed at POST /api/tariffs/{id}/purchase.
+func (h *Handler) Purchase(w http.ResponseWriter, r *http.Request) { h.purchase(w, r) }
 
 func (h *Handler) AdminRoutes() http.Handler {
 	r := chi.NewRouter()
